@@ -201,3 +201,4 @@ cython_debug/
 
 # Visual Studio Code
 #   Visual Studio Code specific template is maintained in a separate VisualStudio
+*.db
