@@ -1,0 +1,21 @@
+# Đổi tên file này thành config.py trên ESP32 và điền thông tin thật
+WIFI_SSID = "TEN_WIFI_PHONG_HOC"
+WIFI_PASSWORD = "MAT_KHAU_WIFI"
+
+# Dùng IP LAN của máy tính đang chạy uvicorn (ví dụ: "http://192.168.1.50:8000")
+SERVER_URL = "http://192.168.1.50:8000"
+
+# Chân GPIO trên ESP32 (tùy chỉnh theo sơ đồ đấu nối thực tế)
+PIR_PIN = 27          # Cảm biến chuyển động PIR
+RELAY_PIN = 26        # Relay điều khiển quạt thông gió
+RELAY_ACTIVE_HIGH = True
+
+# Cấu hình UART cho cảm biến MH-Z19C (nếu dùng)
+MHZ19_UART_ID = 2
+MHZ19_TX_PIN = 17
+MHZ19_RX_PIN = 16
+SIMULATE_SENSORS = True   # Đặt False khi đã nối cảm biến MH-Z19C thật
+
+# Chu kỳ hoạt động (giây)
+TELEMETRY_INTERVAL_SEC = 60
+COMMAND_POLL_INTERVAL_SEC = 4
