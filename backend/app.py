@@ -1,10 +1,21 @@
+import os
 import sqlite3
+import sys
 import time
 import uuid
+from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-DB_PATH = "co2_system.db"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ML_DIR = os.path.join(ROOT_DIR, "ml")
+DB_PATH = os.path.join(ROOT_DIR, "co2_system.db")
+
+if ML_DIR not in sys.path:
+    sys.path.insert(0, ML_DIR)
+
+from predict import predict_latest
+
 app = FastAPI(title="Classroom CO2 Server")
 
 latest_command = {
@@ -23,6 +34,7 @@ class TelemetryIn(BaseModel):
     temp_c: float
     humidity_pct: float
     pir_active: int
+    auto_control: bool = True
 
 
 class CommandIn(BaseModel):
@@ -57,8 +69,21 @@ def on_startup():
     init_db()
 
 
+@app.get("/api/forecast")
+def get_forecast(threshold_ppm: Optional[float] = None):
+    eff_threshold = (
+        float(threshold_ppm)
+        if threshold_ppm is not None
+        else float(latest_command.get("threshold_ppm", 1000.0))
+    )
+    return predict_latest(db_path=DB_PATH, threshold_ppm=eff_threshold)
+
+
 @app.post("/api/telemetry")
 def receive_telemetry(data: TelemetryIn):
+    global latest_command
+    now_ts = time.time()
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
@@ -73,12 +98,38 @@ def receive_telemetry(data: TelemetryIn):
             data.temp_c,
             data.humidity_pct,
             data.pir_active,
-            time.time(),
+            now_ts,
         ),
     )
     conn.commit()
     conn.close()
-    return {"status": "ok", "seq_id": data.seq_id}
+
+    threshold = float(latest_command.get("threshold_ppm", 1000.0))
+    forecast = predict_latest(db_path=DB_PATH, threshold_ppm=threshold)
+
+    # Không ghi đè nếu người dùng vừa bấm thủ công trên dashboard trong vòng 60 giây
+    manual_recent = (
+        latest_command.get("source") in ("streamlit_dashboard", "manual_override")
+        and (now_ts - float(latest_command.get("created_at", 0.0))) < 60.0
+    )
+
+    if data.auto_control and not manual_recent and forecast.get("has_data"):
+        desired_fan = bool(forecast["fan_on"])
+        if desired_fan != bool(latest_command.get("fan_on")) or latest_command.get("source") != "ml_auto":
+            latest_command = {
+                "command_id": str(uuid.uuid4()),
+                "fan_on": desired_fan,
+                "threshold_ppm": threshold,
+                "source": "ml_auto",
+                "created_at": now_ts,
+            }
+
+    return {
+        "status": "ok",
+        "seq_id": data.seq_id,
+        "forecast": forecast,
+        "command": latest_command,
+    }
 
 
 @app.get("/api/command")
